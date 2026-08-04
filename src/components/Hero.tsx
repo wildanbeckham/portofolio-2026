@@ -1,7 +1,8 @@
 "use client";
 
 import { ArrowDownRight, FileText } from "@phosphor-icons/react";
-import { motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useEffect, useState } from "react";
 import { BackgroundPaths } from "@/components/BackgroundPaths";
 import { profile } from "@/data/content";
 
@@ -37,8 +38,83 @@ function AnimatedTitle({ text }: { text: string }) {
   );
 }
 
+function TypewriterLines({ lines }: { lines: string[] }) {
+  const reduce = useReducedMotion();
+  const [lineIndex, setLineIndex] = useState(0);
+  const [charIndex, setCharIndex] = useState(0);
+  const [deleting, setDeleting] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (reduce || !mounted) return;
+
+    const current = lines[lineIndex] ?? "";
+    const isComplete = charIndex === current.length;
+    const isEmpty = charIndex === 0 && deleting;
+
+    let delay = deleting ? 32 : 55;
+    if (isComplete && !deleting) delay = 1600;
+    if (isEmpty) delay = 320;
+
+    const timer = window.setTimeout(() => {
+      if (isComplete && !deleting) {
+        setDeleting(true);
+        return;
+      }
+
+      if (deleting) {
+        if (charIndex > 0) {
+          setCharIndex((value) => value - 1);
+          return;
+        }
+        setDeleting(false);
+        setLineIndex((value) => (value + 1) % lines.length);
+        return;
+      }
+
+      setCharIndex((value) => value + 1);
+    }, delay);
+
+    return () => window.clearTimeout(timer);
+  }, [charIndex, deleting, lineIndex, lines, mounted, reduce]);
+
+  if (reduce) {
+    return (
+      <p className="mt-5 font-mono text-sm text-ink-soft md:text-base">
+        {lines[0]}
+      </p>
+    );
+  }
+
+  const text = (lines[lineIndex] ?? "").slice(0, charIndex);
+
+  return (
+    <p className="mt-5 min-h-[1.6em] font-mono text-sm text-ink-soft md:text-base">
+      <AnimatePresence mode="wait">
+        <motion.span
+          key={`${lineIndex}-${deleting ? "d" : "t"}`}
+          initial={{ opacity: 0.7 }}
+          animate={{ opacity: 1 }}
+          className="inline"
+        >
+          {text}
+        </motion.span>
+      </AnimatePresence>
+      <span className="ml-0.5 inline-block h-[1.05em] w-[2px] translate-y-[0.15em] animate-pulse bg-accent align-baseline" />
+    </p>
+  );
+}
+
 export function Hero() {
   const reduce = useReducedMotion();
+  const typedLines = [
+    `${profile.experienceYears}+ tahun pengalaman`,
+    "Fokus: Web & mobile UI",
+  ];
 
   return (
     <section
@@ -47,8 +123,8 @@ export function Hero() {
     >
       <BackgroundPaths />
 
-      <div className="relative z-10 mx-auto grid min-h-[100dvh] max-w-[1400px] grid-cols-1 items-center gap-10 px-5 pb-16 pt-28 md:grid-cols-12 md:px-8 md:pb-20 md:pt-24">
-        <div className="md:col-span-7">
+      <div className="relative z-10 mx-auto flex min-h-[100dvh] max-w-[1400px] flex-col items-center justify-center px-5 pb-16 pt-28 text-center md:px-8 md:pb-20 md:pt-24">
+        <div className="mx-auto w-full max-w-3xl">
           <motion.p
             initial={reduce ? false : { opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -60,11 +136,13 @@ export function Hero() {
 
           <AnimatedTitle text={profile.name} />
 
+          <TypewriterLines lines={typedLines} />
+
           <motion.p
             initial={reduce ? false : { opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, delay: 0.2 }}
-            className="mt-5 max-w-[36ch] text-base leading-relaxed text-ink-soft md:text-lg"
+            transition={{ duration: 0.45, delay: 0.25 }}
+            className="mx-auto mt-5 max-w-[40ch] text-base leading-relaxed text-ink-soft md:text-lg"
           >
             {profile.tagline}
           </motion.p>
@@ -72,8 +150,8 @@ export function Hero() {
           <motion.div
             initial={reduce ? false : { opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, delay: 0.3 }}
-            className="mt-8 flex flex-wrap items-center gap-3"
+            transition={{ duration: 0.45, delay: 0.35 }}
+            className="mt-8 flex flex-wrap items-center justify-center gap-3"
           >
             <a
               href="#work"
@@ -93,35 +171,6 @@ export function Hero() {
             </a>
           </motion.div>
         </div>
-
-        <motion.aside
-          initial={reduce ? false : { opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.25 }}
-          className="hidden md:col-span-5 md:block"
-        >
-          <div className="rounded-[var(--radius)] border border-border bg-surface p-6 shadow-[var(--shadow)] md:p-8">
-            <dl className="grid grid-cols-2 gap-6">
-              <div>
-                <dt className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-                  Pengalaman
-                </dt>
-                <dd className="mt-2 font-display text-3xl font-bold text-ink">
-                  {profile.experienceYears}+
-                  <span className="ml-1 text-base font-medium text-muted">thn</span>
-                </dd>
-              </div>
-              <div>
-                <dt className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-                  Fokus
-                </dt>
-                <dd className="mt-2 text-base font-medium leading-snug text-ink">
-                  Web &amp; mobile UI
-                </dd>
-              </div>
-            </dl>
-          </div>
-        </motion.aside>
       </div>
     </section>
   );
