@@ -1,134 +1,49 @@
 "use client";
 
-import { ArrowUpRight } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowRight, ArrowUpRight } from "@phosphor-icons/react";
+import { motion, useMotionValue, useReducedMotion, useSpring } from "motion/react";
 import Image from "next/image";
-import { ContainerScroll } from "@/components/ContainerScroll";
-import { Reveal, Stagger, StaggerItem } from "@/components/Reveal";
+import { useState, type PointerEvent } from "react";
+import { Reveal } from "@/components/Reveal";
 import { projects } from "@/data/content";
 
 export function Projects() {
-  const featured = projects[0];
-  const rest = projects.slice(1);
+  const [active, setActive] = useState(0);
+  const reduce = useReducedMotion();
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const rotateX = useSpring(x, { stiffness: 150, damping: 22 });
+  const rotateY = useSpring(y, { stiffness: 150, damping: 22 });
+  const project = projects[active];
+
+  function tilt(event: PointerEvent<HTMLAnchorElement>) {
+    if (reduce || event.pointerType !== "mouse") return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    x.set((0.5 - (event.clientY - rect.top) / rect.height) * 8);
+    y.set(((event.clientX - rect.left) / rect.width - 0.5) * 8);
+  }
 
   return (
-    <section id="work" className="border-b border-border py-20 md:py-28">
-      <div className="mx-auto max-w-[1400px] px-5 md:px-8">
-        <Reveal>
-          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-            <div>
-              <h2 className="font-display text-3xl font-bold tracking-tight text-ink md:text-4xl">
-                Proyek &amp; Portofolio
-              </h2>
-              <p className="mt-4 max-w-[42ch] text-base text-ink-soft">
-                Karya terpilih dari kolaborasi produk, brand, dan layanan digital.
-              </p>
-            </div>
-            <p className="font-mono text-xs uppercase tracking-[0.16em] text-muted">
-              {projects.length} proyek
-            </p>
+    <section id="work" className="section projects-section">
+      <div className="page-container">
+        <Reveal><p className="eyebrow">Dari ide menjadi nyata</p><h2 className="section-heading">Karya yang berbicara.</h2><p className="section-description">Eksplorasi {projects.length} proyek untuk produk, brand, dan layanan digital.</p></Reveal>
+        <Reveal className="project-showcase">
+          <div className="project-image-stage">
+            <motion.a href={project.linkUrl} target="_blank" rel="noopener noreferrer" className="project-preview" style={{ rotateX: reduce ? 0 : rotateX, rotateY: reduce ? 0 : rotateY }} onPointerMove={tilt} onPointerLeave={() => { x.set(0); y.set(0); }} aria-label={`Buka website ${project.title}`}>
+              <Image key={project.id} src={project.coverImage} alt={`Screenshot website ${project.title}`} fill sizes="(max-width: 767px) 92vw, 65vw" className="project-cover" />
+            </motion.a>
+          </div>
+          <div className="project-info" aria-live="polite">
+            <span className="project-count">{String(active + 1).padStart(2, "0")} <span>/ {projects.length}</span></span>
+            <h3>{project.title}</h3><p>{project.description}</p>
+            <div className="project-tags">{project.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
+            <a href={project.linkUrl} target="_blank" rel="noopener noreferrer" className="text-link">Kunjungi Website <ArrowUpRight size={18} /></a>
+            <div className="project-controls"><button type="button" className="icon-button" aria-label="Proyek sebelumnya" onClick={() => setActive((active + projects.length - 1) % projects.length)}><ArrowLeft size={21} /></button><button type="button" className="icon-button" aria-label="Proyek berikutnya" onClick={() => setActive((active + 1) % projects.length)}><ArrowRight size={21} /></button></div>
           </div>
         </Reveal>
-
-        {featured ? (
-          <ContainerScroll
-            titleComponent={
-              <div className="mb-2 mt-10 md:mt-14">
-                <p className="font-mono text-xs uppercase tracking-[0.14em] text-accent">
-                  {featured.subtitle}
-                </p>
-                <h3 className="mt-3 font-display text-3xl font-bold tracking-tight text-ink md:text-5xl">
-                  {featured.title}
-                </h3>
-                <p className="mt-4 max-w-[48ch] text-sm leading-relaxed text-ink-soft md:text-base">
-                  {featured.description}
-                </p>
-              </div>
-            }
-          >
-            <a
-              href={featured.linkUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group relative block overflow-hidden rounded-[var(--radius)] border border-border bg-surface shadow-[var(--shadow)]"
-            >
-              <div className="relative aspect-[16/10] overflow-hidden bg-page md:aspect-[16/9]">
-                <Image
-                  src={featured.coverImage}
-                  alt={`Preview ${featured.title}`}
-                  fill
-                  priority
-                  className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
-                  sizes="(max-width: 1024px) 100vw, 900px"
-                />
-              </div>
-              <div className="flex items-center justify-between gap-4 border-t border-border px-5 py-4 md:px-6">
-                <div className="flex flex-wrap gap-2">
-                  {featured.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-full bg-page-elevated px-3 py-1 text-xs font-medium text-ink-soft"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-                <span className="inline-flex items-center gap-1 text-sm font-semibold text-accent">
-                  Live Demo
-                  <ArrowUpRight size={16} weight="bold" />
-                </span>
-              </div>
-            </a>
-          </ContainerScroll>
-        ) : null}
-
-        <Stagger className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {rest.map((project) => (
-            <StaggerItem key={project.id}>
-              <a
-                href={project.linkUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group flex h-full flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-surface transition-colors hover:border-accent"
-              >
-                <div className="relative aspect-[16/10] overflow-hidden bg-page">
-                  <Image
-                    src={project.coverImage}
-                    alt={`Preview ${project.title}`}
-                    fill
-                    className="object-cover transition-transform duration-700 group-hover:scale-[1.04]"
-                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                  />
-                </div>
-                <div className="flex flex-1 flex-col gap-4 p-5">
-                  <div>
-                    <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-                      {project.subtitle}
-                    </p>
-                    <h3 className="mt-2 font-display text-xl font-bold tracking-tight text-ink">
-                      {project.title}
-                    </h3>
-                  </div>
-                  <p className="line-clamp-3 flex-1 text-sm leading-relaxed text-ink-soft">
-                    {project.description}
-                  </p>
-                  <div className="flex items-center justify-between gap-3 border-t border-border pt-4">
-                    <div className="flex flex-wrap gap-1.5">
-                      {project.tags.slice(0, 2).map((tag) => (
-                        <span
-                          key={tag}
-                          className="rounded-full bg-page-elevated px-2.5 py-1 text-[11px] font-medium text-ink-soft"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                    <span className="text-sm font-semibold text-accent">Live</span>
-                  </div>
-                </div>
-              </a>
-            </StaggerItem>
-          ))}
-        </Stagger>
+        <div className="project-index" aria-label="Pilih proyek">
+          {projects.map((item, index) => <button type="button" key={item.id} onClick={() => setActive(index)} aria-pressed={active === index}><span>{String(index + 1).padStart(2, "0")}</span>{item.title}<ArrowUpRight size={16} /></button>)}
+        </div>
       </div>
     </section>
   );

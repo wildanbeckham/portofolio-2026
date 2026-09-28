@@ -11,7 +11,7 @@ export const profile = {
   experienceYears: 2,
   location: "Pondok Kacang Barat, Pondok Aren, Tangerang Selatan, Banten",
   email: "wildanbeckham5@gmail.com",
-  whatsapp: "085157283329",
+  whatsapp: "6285157283329",
   whatsappDisplay: "0851-5728-3329",
   cvUrl: "/wildan-CV-2026.pdf",
   socials: {
