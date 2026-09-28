@@ -35,6 +35,14 @@ export const metadata: Metadata = {
 
 const themeInitScript = `
 (() => {
+  // Netlify injects a hosting comment and whitespace that React 19 cannot hydrate.
+  for (const node of Array.from(document.head.childNodes)) {
+    if (node.nodeType === 8 && node.textContent.includes('This site is hosted on Netlify.')) {
+      const previous = node.previousSibling;
+      if (previous?.nodeType === 3 && !previous.textContent.trim()) previous.remove();
+      node.remove();
+    }
+  }
   let stored;
   try { stored = localStorage.getItem('theme'); } catch (_) {}
   const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
