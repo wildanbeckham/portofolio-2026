@@ -37,12 +37,68 @@ try {
   const portalBefore = await scene.getAttribute('data-portal-time');
   const npcsBefore = await scene.getAttribute('data-npcs');
   assert.equal(JSON.parse(npcsBefore).length, 5, 'Five ambient NPCs populate the island');
+  const faunaBefore = await scene.getAttribute('data-fauna');
+  const waterBefore = await scene.getAttribute('data-waterlife');
+  const castleBefore = JSON.parse(await scene.getAttribute('data-castle'));
+  assert.ok(castleBefore.x > 6 && castleBefore.z < -8, 'Castle occupies the back-right corner');
+  for (const dx of [-1.9, 1.9]) for (const dz of [-1.7, 1.7]) {
+    const x = Math.abs(castleBefore.x + dx), z = Math.abs(castleBefore.z + dz);
+    assert.ok(Math.max(x, z) + Math.min(x, z) * Math.tan(Math.PI / 8) < 15, 'Castle footprint fits the octagonal island');
+  }
+  assert.ok(Number(await scene.getAttribute('data-fisherman-clearance')) > 1.5, 'Fishing NPC is clear of tree trunks and crowns');
+  const waterfall = JSON.parse(await scene.getAttribute('data-waterfall'));
+  assert.ok(Math.abs(waterfall.outlet[1] - waterfall.height - waterfall.basin[1]) < .001, 'Waterfall terminates at the lower pool surface');
+  assert.ok(waterfall.basin[1] < -5.85 && waterfall.landingRadius > 1, 'A lower rock pool catches the waterfall below the main island');
+  assert.ok(waterfall.splash > 0 && waterfall.mist > 0, 'Waterfall impact includes spray and mist');
+  assert.equal(JSON.parse(waterBefore).fish.length, 6, 'Six fish swim in the pond');
+  assert.ok(Number(await scene.getAttribute('data-walk-radius')) > 13, 'The expanded island is walkable beyond thirteen units');
+  assert.equal(JSON.parse(faunaBefore).butterflies.length, 7, 'Seven butterflies populate the gardens');
+  assert.equal(JSON.parse(faunaBefore).foxes.length, 2, 'Two foxes populate the island');
+  assert.equal(Number(await scene.getAttribute('data-butterfly-scale')), .45, 'Butterflies are less than half their previous size');
+  assert.equal(new Set((await scene.getAttribute('data-npc-shapes')).split(',')).size, 5, 'Residents have five distinct silhouettes');
+  await page.evaluate(() => {
+    window.__residents = { worship: false, jump: false, trip: false, recovered: false, departed: false, wave: false, invalid: false };
+    window.__residentCheck = setInterval(() => {
+      const el = document.querySelector('.game-viewport');
+      const positions = JSON.parse(el.dataset.npcs);
+      const actors = JSON.parse(el.dataset.inhabitants);
+      const castle = JSON.parse(el.dataset.castle);
+      const [pondX, pondZ, pondRadius] = el.dataset.pond.split(',').map(Number);
+      if (JSON.parse(el.dataset.waterlife).fish.some(([x, , z]) => Math.hypot(x - pondX, z - pondZ) > pondRadius - .3)) window.__residents.invalid = true;
+      actors.forEach((actor, index) => {
+        if (Math.hypot(actor.x - castle.x, actor.z - castle.z) < castle.radius + Math.max(0, actor.radius - .4) - .001) window.__residents.invalid = true;
+        if (Math.hypot(actor.x - pondX, actor.z - pondZ) < pondRadius + Math.max(0, actor.radius - .4) - .001) window.__residents.invalid = true;
+        if (actors.slice(index + 1).some((other) => Math.hypot(actor.x - other.x, actor.z - other.z) < actor.radius + other.radius - .001)) window.__residents.invalid = true;
+      });
+      JSON.parse(el.dataset.npcActions).forEach((npc, index) => {
+        const [x, z] = positions[index];
+        const seen = window.__residents;
+        if (Math.hypot(x, z) < 1.8 || Math.hypot(x, z) > Number(el.dataset.walkRadius) || npc.y < 0) seen.invalid = true;
+        if (index === 0 && npc.action === 'worship' && npc.bow > .3 && Math.hypot(x, z) <= 2.51 && Math.abs(Math.sin(npc.facing) + x / Math.hypot(x, z)) < .02 && Math.abs(Math.cos(npc.facing) + z / Math.hypot(x, z)) < .02) seen.worship = true;
+        if (seen.worship && index === 0 && npc.action === 'walk' && npc.bow === 0 && Math.hypot(x, z) > 2.7) seen.departed = true;
+        if (npc.action === 'jump' && npc.y > .15) seen.jump = true;
+        if (index === 3 && npc.action === 'trip' && npc.bow > 1) seen.trip = true;
+        if (seen.trip && index === 3 && npc.action !== 'trip' && npc.bow === 0 && npc.y === 0) seen.recovered = true;
+        if (npc.action === 'wave') seen.wave = true;
+      });
+    }, 50);
+  });
   const windmill = (await scene.getAttribute('data-windmill')).split(',').map(Number);
   assert.ok(Math.hypot(...windmill) + 1.5 < 11.6 * Math.cos(Math.PI / 8), 'Windmill and blade sweep fit inside the shore');
   await page.waitForTimeout(300);
   assert.notEqual(await scene.getAttribute('data-weather'), weatherBefore, 'Clouds, windmill, and trees animate');
   assert.notEqual(await scene.getAttribute('data-portal-time'), portalBefore, 'Portal energy animates in the world');
   assert.notEqual(await scene.getAttribute('data-npcs'), npcsBefore, 'Residents walk independently');
+  assert.notEqual(await scene.getAttribute('data-fauna'), faunaBefore, 'Butterflies flutter and foxes roam');
+  assert.notEqual(await scene.getAttribute('data-waterlife'), waterBefore, 'Fish, falling water, and fishing animate');
+  const waterAfter = JSON.parse(await scene.getAttribute('data-waterlife'));
+  assert.notEqual(waterAfter.stream, JSON.parse(waterBefore).stream, 'Stream waves and foam receive animation time');
+  assert.notEqual(JSON.parse(await scene.getAttribute('data-castle')).flag, castleBefore.flag, 'Castle flag waves');
+  assert.notEqual(waterAfter.fall, JSON.parse(waterBefore).fall, 'Curved waterfall shader receives animation time');
+  assert.notDeepEqual(waterAfter.splash, JSON.parse(waterBefore).splash, 'Impact droplets animate');
+  assert.notEqual(waterAfter.mist, JSON.parse(waterBefore).mist, 'Mist drifts around the lower pool');
+  await page.waitForFunction(() => Object.entries(window.__residents).every(([key, value]) => key === 'invalid' || value), null, { timeout: 45000 });
+  assert.equal(await page.evaluate(() => { clearInterval(window.__residentCheck); return window.__residents.invalid; }), false, 'Residents remain outside the altar, inside the shore, and never overlap');
   const cameraBefore = await scene.getAttribute('data-camera');
   await page.mouse.move(1000, 300);
   await page.waitForTimeout(350);
@@ -64,7 +120,7 @@ try {
   await page.waitForTimeout(4500);
   await page.keyboard.up('d');
   const edge = await position();
-  assert.ok(Math.hypot(edge.x, edge.z) <= 10.32, 'Robot stays inside the larger shoreline');
+  assert.ok(Math.hypot(edge.x, edge.z) <= Number(await scene.getAttribute('data-walk-radius')), 'Robot stays inside the larger shoreline');
   await page.getByRole('button', { name: 'Reset posisi robot' }).click();
   await page.keyboard.down('a');
   await page.waitForTimeout(150);
@@ -94,11 +150,19 @@ try {
     const stopped = await position();
     const weatherPaused = await scene.getAttribute('data-weather');
     const npcsPaused = await scene.getAttribute('data-npcs');
+    const actionsPaused = await scene.getAttribute('data-npc-actions');
+    const faunaPaused = await scene.getAttribute('data-fauna');
+    const waterPaused = await scene.getAttribute('data-waterlife');
+    const castlePaused = await scene.getAttribute('data-castle');
     await page.keyboard.press('w');
     await page.waitForTimeout(150);
     assert.deepEqual(await position(), stopped, 'Modal pauses the game');
     assert.equal(await scene.getAttribute('data-weather'), weatherPaused, 'Modal pauses environment animation');
     assert.equal(await scene.getAttribute('data-npcs'), npcsPaused, 'Modal pauses NPC movement');
+    assert.equal(await scene.getAttribute('data-npc-actions'), actionsPaused, 'Modal pauses NPC gestures');
+    assert.equal(await scene.getAttribute('data-fauna'), faunaPaused, 'Modal pauses animals');
+    assert.equal(await scene.getAttribute('data-waterlife'), waterPaused, 'Modal pauses fish, waterfall, and fishing');
+    assert.equal(await scene.getAttribute('data-castle'), castlePaused, 'Modal pauses castle flag');
     if (index !== 0) assert.notEqual(await portrait.getAttribute('data-preview-time'), previewBefore, 'Portrait animates while the world is paused');
     for (let i = 0; i < 12; i++) {
       await page.keyboard.press('Tab');
@@ -205,11 +269,19 @@ try {
   const staticCamera = await scene.getAttribute('data-camera');
   const staticWeather = await scene.getAttribute('data-weather');
   const staticNpcs = await scene.getAttribute('data-npcs');
+  const staticActions = await scene.getAttribute('data-npc-actions');
+  const staticFauna = await scene.getAttribute('data-fauna');
+  const staticWater = await scene.getAttribute('data-waterlife');
+  const staticCastle = await scene.getAttribute('data-castle');
   await page.mouse.move(200, 250);
   await page.waitForTimeout(200);
   assert.equal(await scene.getAttribute('data-camera'), staticCamera);
   assert.equal(await scene.getAttribute('data-weather'), staticWeather, 'Reduced motion stops clouds, trees, and windmill');
   assert.equal(await scene.getAttribute('data-npcs'), staticNpcs, 'Reduced motion stops ambient NPC wandering');
+  assert.equal(await scene.getAttribute('data-npc-actions'), staticActions, 'Reduced motion stops NPC gestures');
+  assert.equal(await scene.getAttribute('data-fauna'), staticFauna, 'Reduced motion stops animal animation');
+  assert.equal(await scene.getAttribute('data-waterlife'), staticWater, 'Reduced motion stops aquatic animation');
+  assert.equal(await scene.getAttribute('data-castle'), staticCastle, 'Reduced motion stops castle flag');
   await open('Proyek');
   await modal.locator('[data-preview="ready"] canvas').waitFor();
   const reducedPreview = await modal.locator('.interaction-portrait-stage').getAttribute('data-preview-time');
@@ -234,6 +306,36 @@ try {
   await touch.getByRole('button', { name: 'Tutup modal dan kembali bermain' }).tap();
   await touch.close();
 
+  const collision = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
+  collision.on('pageerror', (error) => errors.push(error.message));
+  // Approach frozen residents using real keyboard input, including attempts to jump through them.
+  for (const [name, actorIndex] of [['NPC', 5], ['fox', 7], ['butterfly', 9]]) {
+    await collision.goto(url);
+    await collision.waitForSelector('.game-exhibit[data-status="ready"]');
+    const actors = () => collision.locator('.game-viewport').evaluate((el) => JSON.parse(el.dataset.inhabitants));
+    const target = (await actors())[actorIndex];
+    for (let step = 0; step < 65; step++) {
+      const player = (await actors())[0];
+      const dx = target.x - player.x;
+      const dz = target.z - player.z;
+      const right = dx * .91 - dz * .41;
+      const forward = dx * .41 + dz * .91;
+      const move = [];
+      if (Math.abs(right) > Math.abs(forward) * .4) move.push(right > 0 ? 'd' : 'a');
+      if (Math.abs(forward) > Math.abs(right) * .4) move.push(forward > 0 ? 's' : 'w');
+      for (const key of move) await collision.keyboard.down(key);
+      if (step % 10 === 0) await collision.keyboard.press('Space');
+      await collision.waitForTimeout(70);
+      for (const key of move) await collision.keyboard.up(key);
+      const current = (await actors())[0];
+      assert.ok(Math.hypot(current.x - target.x, current.z - target.z) >= current.radius + target.radius - .001, `Player cannot penetrate ${name}, even when jumping`);
+    }
+    const player = (await actors())[0];
+    assert.ok(Math.hypot(player.x - target.x, player.z - target.z) < player.radius + target.radius + .2, `Player reaches the ${name} collision boundary`);
+    console.log(`Solid ${name} collision: OK`);
+  }
+  await collision.close();
+
   const fallback = await browser.newPage();
   await fallback.addInitScript(() => {
     const original = HTMLCanvasElement.prototype.getContext;
@@ -249,7 +351,7 @@ try {
   }
   await fallback.close();
   assert.deepEqual(errors, [], 'No browser runtime errors');
-  console.log('Central altar, contact NPC, wandering residents, windmill bounds, portals, modals, mobile, and WebGL fallback: OK');
+  console.log('Altar worship, NPC gestures and recovery, butterflies, foxes, portals, modals, mobile, and WebGL fallback: OK');
 } finally {
   await browser.close();
 }
