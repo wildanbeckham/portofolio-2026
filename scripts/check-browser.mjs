@@ -7,6 +7,7 @@ const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || 
 const errors = [];
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, colorScheme: "light" });
 page.on("pageerror", (error) => errors.push(error.message));
+page.on('console', (message) => { if (message.type() === 'error' && /THREE|shader|WebGL/i.test(message.text())) errors.push(message.text()); });
 const url = process.env.PORTFOLIO_URL || "http://127.0.0.1:4173";
 const names = ["Tentang", "Keahlian", "Proyek", "Kontak"];
 const ids = ["about", "skills", "work", "contact"];
@@ -14,7 +15,7 @@ const scene = page.locator(".game-viewport");
 const modal = page.getByRole("dialog");
 const position = () => scene.evaluate((el) => ({ x: Number(el.dataset.playerX), z: Number(el.dataset.playerZ), y: Number(el.dataset.playerY) }));
 async function open(name) {
-  await page.getByRole("navigation", { name: "Akses cepat portal" }).getByRole("button", { name, exact: true }).click();
+  await page.getByRole("navigation", { name: "Akses cepat portfolio" }).getByRole("button", { name, exact: true }).click();
   await modal.waitFor();
 }
 async function close() {
@@ -33,8 +34,15 @@ try {
   assert.equal(await modal.count(), 0, "Content starts hidden");
   assert.equal(await scene.getAttribute('data-sky'), 'sun', 'Light theme shows the sun');
   const weatherBefore = await scene.getAttribute('data-weather');
+  const portalBefore = await scene.getAttribute('data-portal-time');
+  const npcsBefore = await scene.getAttribute('data-npcs');
+  assert.equal(JSON.parse(npcsBefore).length, 5, 'Five ambient NPCs populate the island');
+  const windmill = (await scene.getAttribute('data-windmill')).split(',').map(Number);
+  assert.ok(Math.hypot(...windmill) + 1.5 < 11.6 * Math.cos(Math.PI / 8), 'Windmill and blade sweep fit inside the shore');
   await page.waitForTimeout(300);
   assert.notEqual(await scene.getAttribute('data-weather'), weatherBefore, 'Clouds, windmill, and trees animate');
+  assert.notEqual(await scene.getAttribute('data-portal-time'), portalBefore, 'Portal energy animates in the world');
+  assert.notEqual(await scene.getAttribute('data-npcs'), npcsBefore, 'Residents walk independently');
   const cameraBefore = await scene.getAttribute('data-camera');
   await page.mouse.move(1000, 300);
   await page.waitForTimeout(350);
@@ -78,23 +86,43 @@ try {
     assert.equal(await modal.getAttribute('aria-labelledby'), 'portal-title');
     assert.equal(await page.locator('#portal-title').innerText(), names[index]);
     assert.ok(await modal.locator(`#${ids[index]}`).isVisible());
+    const portrait = modal.locator('.interaction-portrait-stage');
+    await modal.locator('[data-preview="ready"] canvas').waitFor();
+    assert.equal(await modal.locator('.interaction-portrait').getAttribute('data-asset'), ['altar', 'portal', 'portal', 'npc'][index]);
+    assert.equal(await page.locator('canvas').count(), 2, 'One world canvas and one asset canvas');
+    const previewBefore = await portrait.getAttribute('data-preview-time');
     const stopped = await position();
     const weatherPaused = await scene.getAttribute('data-weather');
+    const npcsPaused = await scene.getAttribute('data-npcs');
     await page.keyboard.press('w');
     await page.waitForTimeout(150);
     assert.deepEqual(await position(), stopped, 'Modal pauses the game');
     assert.equal(await scene.getAttribute('data-weather'), weatherPaused, 'Modal pauses environment animation');
+    assert.equal(await scene.getAttribute('data-npcs'), npcsPaused, 'Modal pauses NPC movement');
+    if (index !== 0) assert.notEqual(await portrait.getAttribute('data-preview-time'), previewBefore, 'Portrait animates while the world is paused');
     for (let i = 0; i < 12; i++) {
       await page.keyboard.press('Tab');
       assert.ok(await page.evaluate(() => document.querySelector('dialog').contains(document.activeElement)), 'Focus stays inside modal');
     }
     await close();
+    assert.equal(await page.locator('canvas').count(), 1, 'Closing disposes the asset renderer');
     assert.ok(await scene.evaluate((el) => el === document.activeElement), 'Focus returns to game');
-    // Fast travel leaves the player just in front of the portal. Walk through it.
+    // The altar and service NPC require interaction; portals still open on entry.
     await page.keyboard.down('w');
+    if (index === 0 || index === 3) {
+      await page.waitForTimeout(300);
+      await page.keyboard.up('w');
+      assert.equal(await modal.count(), 0, 'Approaching statue or NPC does not auto-open content');
+      if (index === 0) {
+        const p = await position();
+        assert.ok(Math.hypot(p.x, p.z) >= 1.8, 'Central altar blocks walking through the statue');
+        assert.ok(Math.hypot(p.x, p.z) < 2.15, 'Statue is reachable from outside its collision boundary');
+        await page.keyboard.press('e');
+      } else await page.getByRole('button', { name: 'Interaksi E', exact: true }).click();
+    }
     await modal.waitFor({ timeout: 5000 });
     await page.keyboard.up('w');
-    assert.equal(await page.locator('#portal-title').innerText(), names[index], 'Walking into portal opens its content');
+    assert.equal(await page.locator('#portal-title').innerText(), names[index], 'Interaction opens the matching content');
     await close();
     await page.waitForTimeout(350);
     assert.equal(await modal.count(), 0, 'Closing does not immediately retrigger portal');
@@ -113,6 +141,8 @@ try {
   }
   await close();
   await open('Kontak');
+  assert.equal(await modal.locator('.npc-services li').count(), 3, 'Contact NPC presents three services');
+  assert.equal(await modal.getByRole('link', { name: /Email/ }).getAttribute('href'), 'mailto:wildanbeckham5@gmail.com');
   await page.evaluate(() => { window.open = (url) => { window.__draftUrl = url; return null; }; });
   await modal.getByLabel('Nama', { exact: true }).fill('Portal Check');
   await modal.getByLabel('Email', { exact: true }).fill('check@example.com');
@@ -143,6 +173,11 @@ try {
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight), `Game fits ${width}x${height}`);
     await open('Kontak');
     assert.ok(await modal.evaluate((el) => el.scrollWidth <= el.clientWidth), 'Modal has no horizontal overflow');
+    await modal.locator('[data-preview="ready"] canvas').waitFor();
+    const content = await modal.locator('.portal-modal-content').boundingBox();
+    const portrait = await modal.locator('.interaction-portrait').boundingBox();
+    assert.ok(width < 768 ? portrait.y + portrait.height <= content.y + 1 : portrait.x >= content.x + content.width - 1, 'Asset sits above content on mobile and beside it on desktop');
+    assert.ok(await modal.locator('.portal-modal-content').evaluate((el) => el.scrollWidth <= el.clientWidth), 'Content fits the narrower reading column');
     await close();
     console.log(`Game and modal layout ${width}x${height}: OK`);
   }
@@ -150,6 +185,7 @@ try {
   await page.goto(`${url}/#skills`);
   await modal.waitFor();
   assert.equal(await page.locator('#portal-title').innerText(), 'Keahlian', 'Existing anchors open the matching portal');
+  await modal.locator('[data-preview="ready"] canvas').waitFor();
   await close();
   await open('Proyek');
   await page.goBack();
@@ -168,10 +204,21 @@ try {
   await page.waitForTimeout(300);
   const staticCamera = await scene.getAttribute('data-camera');
   const staticWeather = await scene.getAttribute('data-weather');
+  const staticNpcs = await scene.getAttribute('data-npcs');
   await page.mouse.move(200, 250);
   await page.waitForTimeout(200);
   assert.equal(await scene.getAttribute('data-camera'), staticCamera);
   assert.equal(await scene.getAttribute('data-weather'), staticWeather, 'Reduced motion stops clouds, trees, and windmill');
+  assert.equal(await scene.getAttribute('data-npcs'), staticNpcs, 'Reduced motion stops ambient NPC wandering');
+  await open('Proyek');
+  await modal.locator('[data-preview="ready"] canvas').waitFor();
+  const reducedPreview = await modal.locator('.interaction-portrait-stage').getAttribute('data-preview-time');
+  await page.waitForTimeout(250);
+  assert.equal(await modal.locator('.interaction-portrait-stage').getAttribute('data-preview-time'), reducedPreview, 'Reduced motion stops portrait animation');
+  await modal.locator('canvas').evaluate((canvas) => canvas.dispatchEvent(new Event('webglcontextlost', { cancelable: true })));
+  assert.ok(await modal.locator('.portrait-fallback').isVisible(), 'Lost portrait context has a readable fallback');
+  assert.ok(await modal.locator('#work').isVisible(), 'Content survives portrait failure');
+  await close();
 
   const touch = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   await touch.goto(url);
@@ -197,11 +244,12 @@ try {
   for (const name of names) {
     await fallback.getByRole('navigation').getByRole('button', { name, exact: true }).click();
     assert.ok(await fallback.getByRole('dialog').isVisible(), 'Content remains accessible without WebGL');
+    assert.ok(await fallback.locator('.portrait-fallback').isVisible(), 'Asset fallback is available without WebGL');
     await fallback.keyboard.press('Escape');
   }
   await fallback.close();
   assert.deepEqual(errors, [], 'No browser runtime errors');
-  console.log('Four physical portals, modal focus/pause/close, content, history, parallax, mobile, and WebGL fallback: OK');
+  console.log('Central altar, contact NPC, wandering residents, windmill bounds, portals, modals, mobile, and WebGL fallback: OK');
 } finally {
   await browser.close();
 }

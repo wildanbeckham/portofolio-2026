@@ -179,6 +179,9 @@ a { text-decoration: none; }
 .project-index button:hover { color: var(--accent); }
 
 .contact-section { border-top: 1px solid var(--border); }
+.npc-services { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; padding: 22px 0; margin-top: 24px; border-block: 1px solid var(--border); list-style: none; }
+.npc-services h3 { font-size: 15px; font-weight: 600; color: var(--accent); }
+.npc-services p { font-size: 13px; line-height: 1.7; color: var(--ink-soft); margin-top: 8px; }
 .contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 90px; margin-top: 50px; }
 .contact-details { display: flex; flex-direction: column; align-items: flex-start; gap: 25px; }
 .contact-details > a, .contact-details > div { display: flex; align-items: flex-start; gap: 15px; }
@@ -267,6 +270,7 @@ a { text-decoration: none; }
   .project-index { grid-template-columns: 1fr 1fr; column-gap: 16px; margin-top: 28px; }
   .project-index button { font-size: 9px; gap: 7px; }
   .contact-grid { grid-template-columns: 1fr; gap: 35px; margin-top: 35px; }
+  .npc-services { grid-template-columns: 1fr; gap: 18px; }
   .contact-form { padding: 22px; }
   .form-row { grid-template-columns: 1fr; gap: 20px; }
   .footer-inner { flex-wrap: wrap; gap: 18px; }
@@ -317,12 +321,22 @@ a { text-decoration: none; }
 .world-shortcuts button:hover { color: var(--accent); background: var(--accent-soft); }
 .game-fullscreen .game-pause-label { z-index: 2; }
 
-.portal-modal { margin: auto; padding: 0; width: min(1100px, calc(100vw - 64px)); max-width: none; max-height: calc(100dvh - 64px); background: var(--page); color: var(--ink); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 30px 100px #07150c55; overscroll-behavior: contain; }
+.portal-modal { margin: auto; padding: 0; width: min(1360px, calc(100vw - 64px)); max-width: none; height: min(820px, calc(100dvh - 64px)); max-height: calc(100dvh - 64px); overflow: hidden; background: var(--page); color: var(--ink); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 30px 100px #07150c55; overscroll-behavior: contain; }
 .portal-modal::backdrop { background: #07150ca8; backdrop-filter: blur(7px); }
 .portal-modal[open] { display: flex; flex-direction: column; }
 .portal-modal-header { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 20px 28px; border-bottom: 1px solid var(--border); background: var(--surface); gap: 15px; }
 .portal-modal-header h2 { font-family: var(--font-syne); font-size: 23px; font-weight: 700; letter-spacing: -.03em; margin-top: 3px; }
-.portal-modal-content { overflow-y: auto; overflow-x: hidden; min-height: 0; overscroll-behavior: contain; }
+.portal-modal-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, 30%); flex: 1; min-height: 0; }
+.portal-modal-content { overflow-y: auto; overflow-x: hidden; min-height: 0; min-width: 0; overscroll-behavior: contain; }
+.interaction-portrait { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid var(--border); background: radial-gradient(ellipse at 50% 42%, var(--accent-soft), var(--page-elevated) 75%); }
+.interaction-portrait-stage { position: relative; flex: 1; min-height: 0; }
+.interaction-portrait-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.portrait-loading, .portrait-fallback { position: absolute; inset: 0; display: grid; place-content: center; padding: 24px; color: var(--muted); font-size: 12px; text-align: center; }
+.portrait-fallback, [data-preview="ready"] .portrait-loading, [data-preview="error"] .portrait-loading { display: none; }
+[data-preview="error"] .portrait-fallback { display: grid; }
+.interaction-portrait-caption { padding: 24px 28px 32px; text-align: center; }
+.interaction-portrait-caption h3 { font-family: var(--font-syne); font-size: 23px; font-weight: 600; letter-spacing: -.035em; }
+.interaction-portrait-caption p { max-width: 25ch; margin: 10px auto 0; font-size: 13px; line-height: 1.7; color: var(--ink-soft); }
 .portal-modal-content .section { border: 0; padding: 38px 0; background: var(--page); }
 .portal-modal-content .page-container { width: calc(100% - 56px); }
 .portal-modal-content .section-heading { font-size: clamp(26px, 3.4vw, 43px); }
@@ -333,6 +347,13 @@ a { text-decoration: none; }
 .portal-modal-footer > span { font-size: 11px; color: var(--muted); }
 .portal-modal-footer .text-link { font-size: 12px; }
 .portal-modal-footer kbd { padding: 3px 5px; border: 1px solid var(--border); border-radius: 4px; font-size: 10px; }
+
+@media (min-width: 768px) and (max-width: 1199px) {
+  .portal-modal-content .about-grid, .portal-modal-content .contact-grid, .portal-modal-content .skills-workbench, .portal-modal-content .project-showcase, .portal-modal-content .npc-services { grid-template-columns: 1fr; }
+  .portal-modal-content .project-index { grid-template-columns: 1fr 1fr; }
+  .portal-modal-content .about-numbers { flex-wrap: wrap; gap: 24px; }
+  .portal-modal-content .form-row { grid-template-columns: 1fr; }
+}
 
 @media (prefers-reduced-motion: no-preference) {
   .portal-modal[open] { animation: portal-open .24s ease-out; }
@@ -357,6 +378,13 @@ a { text-decoration: none; }
   .world-portal-labels button span { font-size: 8px; }
   .world-portal-labels button span:last-child { display: none; }
   .portal-modal { width: calc(100vw - 20px); max-height: calc(100dvh - 24px); border-radius: 12px; }
+  .portal-modal-body { display: flex; flex-direction: column; overflow-y: auto; }
+  .portal-modal-content { overflow: visible; flex-shrink: 0; }
+  .interaction-portrait { order: -1; flex: 0 0 170px; flex-direction: row; border-left: 0; border-bottom: 1px solid var(--border); }
+  .interaction-portrait-stage { flex: 0 0 43%; }
+  .interaction-portrait-caption { flex: 1; align-self: center; padding: 16px 18px 16px 0; text-align: left; }
+  .interaction-portrait-caption h3 { font-size: 19px; }
+  .interaction-portrait-caption p { margin: 8px 0 0; font-size: 12px; }
   .portal-modal-header { padding: 15px 18px; }
   .portal-modal-header h2 { font-size: 21px; }
   .portal-modal-content .page-container { width: calc(100% - 36px); }

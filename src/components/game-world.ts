@@ -2,10 +2,10 @@ import * as THREE from "three";
 import { navLinks } from "@/data/content";
 
 const stations = [
-  { x: -6.4, z: -5 },
-  { x: 0, z: -7.6 },
-  { x: 6.4, z: -4.6 },
-  { x: 6.8, z: 4.2 },
+  { x: 0, z: 0, kind: "statue", reach: 2.15, labelY: 3.8, approach: 1.9 },
+  { x: 0, z: -7.6, kind: "portal", reach: 1.55, labelY: 3.1, approach: 1.15 },
+  { x: 6.4, z: -4.6, kind: "portal", reach: 1.55, labelY: 3.1, approach: 1.15 },
+  { x: 6.2, z: 3.6, kind: "npc", reach: 1.8, labelY: 2.7, approach: 1.3 },
 ];
 const islandRadius = 11.6;
 // Stay inside the octagonal shore, including the robot's footprint.
@@ -103,6 +103,7 @@ export function createGameWorld(host: HTMLDivElement, hint: HTMLParagraphElement
   for (const station of stations) {
     const steps = Math.ceil(Math.hypot(station.x, station.z) / .9);
     for (let i = 1; i < steps; i++) {
+      if (Math.hypot(station.x * i / steps, station.z * i / steps) < 1.8) continue;
       const tile = box(.78, .035, .65, pale, station.x * i / steps, 0, station.z * i / steps);
       tile.rotation.y = Math.atan2(station.x, station.z);
     }
@@ -122,10 +123,12 @@ export function createGameWorld(host: HTMLDivElement, hint: HTMLParagraphElement
     mesh(new THREE.ConeGeometry(.57, 1.2, 5), accent, 0, 1.45, 0, crown);
     return crown;
   });
-  // Windmill is outside the walking boundary, so its moving blades cannot block a portal.
+  // Both the base and the full blade sweep sit comfortably inside the shore.
   const windmill = new THREE.Group();
-  windmill.position.set(-10.5, 0, -4);
+  windmill.position.set(-6.1, 0, -5.2);
   scene.add(windmill);
+  mesh(new THREE.CylinderGeometry(.85, .95, .16, 8), stone, 0, .05, 0, windmill);
+  obstacles.push({ x: windmill.position.x, z: windmill.position.z, r: 1.15 });
   mesh(new THREE.CylinderGeometry(.25, .5, 2.7, 8), pale, 0, 1.35, 0, windmill);
   mesh(new THREE.ConeGeometry(.55, .65, 8), accent, 0, 3, 0, windmill);
   const rotor = new THREE.Group();
@@ -152,40 +155,135 @@ export function createGameWorld(host: HTMLDivElement, hint: HTMLParagraphElement
     return group;
   });
   let disposed = false;
-  const portalMaterial = new THREE.MeshStandardMaterial({ color: "#70d5b2", emissive: "#258666", emissiveIntensity: .5, transparent: true, opacity: .32, side: THREE.DoubleSide, depthWrite: false });
+  const portalMaterial = new THREE.ShaderMaterial({
+    uniforms: { time: { value: 0 }, strength: { value: 0 } },
+    vertexShader: `varying vec2 vUv;
+      void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `varying vec2 vUv; uniform float time; uniform float strength;
+      void main() {
+        vec2 p = (vUv - 0.5) * 2.0;
+        float r = length(p);
+        float angle = atan(p.y, p.x);
+        float spiral = pow(0.5 + 0.5 * sin(angle * 3.0 + r * 19.0 - time * 2.2), 3.0);
+        float ripple = 0.5 + 0.5 * sin(r * 32.0 - time * 3.0);
+        float rim = smoothstep(0.65, 0.98, r);
+        vec3 color = mix(vec3(0.06, 0.29, 0.23), vec3(0.48, 0.94, 0.74), spiral * 0.65 + rim * 0.35);
+        float alpha = (0.4 + spiral * 0.28 + rim * 0.22 + ripple * 0.06 + strength * 0.08) * (1.0 - smoothstep(0.94, 1.0, r));
+        gl_FragColor = vec4(color, alpha);
+      }`,
+    transparent: true, side: THREE.DoubleSide, depthWrite: false,
+  });
   materials.push(portalMaterial);
+  const energyMaterial = new THREE.MeshBasicMaterial({ color: "#96ebc8" });
+  materials.push(energyMaterial);
+  function animatePortal(root: THREE.Group) {
+    const surface = root.getObjectByName("vortex") as THREE.Mesh<THREE.CircleGeometry, THREE.ShaderMaterial>;
+    const orbit = root.getObjectByName("orbit")!;
+    const beacon = root.getObjectByName("beacon")!;
+    return (time: number, active = false) => {
+      surface.material.uniforms.time.value = time;
+      surface.material.uniforms.strength.value = active ? 1 : 0;
+      orbit.rotation.z = -time * .32;
+      orbit.scale.setScalar((active ? 1.06 : 1) + Math.sin(time * 2) * .018);
+      beacon.rotation.y = time;
+      beacon.position.y = 3 + Math.sin(time * 2) * .12;
+    };
+  }
   const rings = stations.map((station, index) => {
-    mesh(new THREE.CylinderGeometry(1.05, 1.15, .17, 24), dark, station.x, .06, station.z);
-    box(.26, 1.6, .4, pale, station.x - .96, .85, station.z);
-    box(.26, 1.6, .4, pale, station.x + .96, .85, station.z);
-    const arch = mesh(new THREE.TorusGeometry(.96, .14, 8, 24, Math.PI), pale, station.x, 1.65, station.z);
+    if (station.kind !== "portal") return null;
+    const root = new THREE.Group();
+    root.position.set(station.x, 0, station.z);
+    scene.add(root);
+    obstacles.push(...[-.96, .96].map((side) => ({ x: station.x + side, z: station.z, r: .35 })));
+    mesh(new THREE.CylinderGeometry(1.05, 1.15, .17, 24), dark, 0, .06, 0, root);
+    box(.26, 1.6, .4, pale, -.96, .85, 0, root);
+    box(.26, 1.6, .4, pale, .96, .85, 0, root);
+    const arch = mesh(new THREE.TorusGeometry(.96, .14, 8, 24, Math.PI), pale, 0, 1.65, 0, root);
     arch.castShadow = false;
-    const ring = mesh(new THREE.TorusGeometry(.82, .045, 6, 40), accent, station.x, 1.25, station.z);
+    const ring = mesh(new THREE.TorusGeometry(.82, .045, 6, 40), energyMaterial, 0, 1.25, 0, root);
     ring.scale.y = 1.35;
-    const surface = mesh(new THREE.CircleGeometry(.8, 40), portalMaterial, station.x, 1.25, station.z);
+    const surfaceMaterial = portalMaterial.clone();
+    materials.push(surfaceMaterial);
+    const surface = mesh(new THREE.CircleGeometry(.8, 40), surfaceMaterial, 0, 1.25, .015, root);
+    surface.name = "vortex";
     surface.scale.y = 1.35;
     surface.castShadow = false;
-    const beacon = mesh(new THREE.OctahedronGeometry(.16, 0), accent, station.x, 3, station.z);
-    beacon.userData.phase = index;
-    return { ring, beacon };
+    const ellipse = new THREE.Group();
+    ellipse.position.set(0, 1.25, .08);
+    ellipse.scale.y = 1.35;
+    root.add(ellipse);
+    const orbit = new THREE.Group();
+    orbit.name = "orbit";
+    ellipse.add(orbit);
+    for (let i = 0; i < 3; i++) {
+      const arc = mesh(new THREE.TorusGeometry(.72 - i * .12, .012, 4, 32, Math.PI * 1.15), energyMaterial, 0, 0, i * .02, orbit);
+      arc.rotation.z = i * Math.PI * .7;
+    }
+    for (let i = 0; i < 16; i++) {
+      const a = i * Math.PI / 8;
+      mesh(new THREE.OctahedronGeometry(i % 3 ? .027 : .045), energyMaterial, Math.cos(a) * .9, Math.sin(a) * .9, Math.sin(a * 3) * .13, orbit);
+    }
+    const beacon = mesh(new THREE.OctahedronGeometry(.16, 0), accent, 0, 3, 0, root);
+    beacon.name = "beacon";
+    return { root, update: animatePortal(root), index };
   });
   const labelNodes = Array.from(labels.querySelectorAll("button"));
   const projected = new THREE.Vector3();
 
-  const player = new THREE.Group();
-  player.position.set(0, 0, 2.3);
-  scene.add(player);
-  const body = new THREE.Group();
-  player.add(body);
-  box(.55, .62, .4, accent, 0, .72, 0, body);
-  box(.7, .52, .56, pale, 0, 1.29, 0, body);
-  box(.55, .24, .035, dark, 0, 1.29, .3, body);
-  box(.1, .075, .03, pale, -.14, 1.3, .326, body);
-  box(.1, .075, .03, pale, .14, 1.3, .326, body);
-  box(.06, .22, .06, dark, 0, 1.65, 0, body);
-  mesh(new THREE.SphereGeometry(.085, 8, 6), accent, 0, 1.79, 0, body);
-  const legs = [-1, 1].map((side) => box(.18, .38, .24, dark, side * .18, .22, 0, body));
-  const arms = [-1, 1].map((side) => box(.15, .48, .19, pale, side * .4, .72, 0, body));
+  function robot(coat: THREE.Material, shell = pale, trim = dark) {
+    const root = new THREE.Group();
+    scene.add(root);
+    const body = new THREE.Group();
+    root.add(body);
+    box(.55, .62, .4, coat, 0, .72, 0, body);
+    box(.7, .52, .56, shell, 0, 1.29, 0, body);
+    box(.55, .24, .035, trim, 0, 1.29, .3, body);
+    box(.1, .075, .03, shell, -.14, 1.3, .326, body);
+    box(.1, .075, .03, shell, .14, 1.3, .326, body);
+    box(.06, .22, .06, trim, 0, 1.65, 0, body);
+    mesh(new THREE.SphereGeometry(.085, 8, 6), coat, 0, 1.79, 0, body);
+    const legs = [-1, 1].map((side) => box(.18, .38, .24, trim, side * .18, .22, 0, body));
+    const arms = [-1, 1].map((side) => box(.15, .48, .19, shell, side * .4, .72, 0, body));
+    return { root, body, legs, arms };
+  }
+  const { root: player, body, legs, arms } = robot(accent);
+  player.position.set(0, 0, 2.8);
+
+  // A stepped stone altar and a larger, motionless carving at the island's center.
+  const altar = new THREE.Group();
+  scene.add(altar);
+  mesh(new THREE.CylinderGeometry(1.55, 1.7, .18, 8), stone, 0, .06, 0, altar);
+  mesh(new THREE.CylinderGeometry(1.2, 1.4, .2, 8), pale, 0, .24, 0, altar);
+  box(1.05, .55, .95, stone, 0, .6, 0, altar);
+  box(1.2, .12, 1.1, pale, 0, .93, 0, altar);
+  box(.55, .19, .035, dark, 0, .61, .49, altar);
+  const statue = robot(pale, pale, stone);
+  altar.add(statue.root);
+  statue.root.position.y = .99;
+  statue.root.scale.setScalar(1.25);
+  statue.arms[0].rotation.x = -.65;
+  box(.34, .4, .09, stone, -.5, .88, .24, statue.body).rotation.x = -.35;
+  obstacles.push({ x: 0, z: 0, r: 1.8 });
+
+  const service = robot(material("#b59b68"));
+  service.root.position.set(stations[3].x, 0, stations[3].z);
+  box(.82, .1, .68, dark, 0, 1.58, 0, service.body);
+  box(.5, .22, .44, pale, 0, 1.72, 0, service.body);
+  box(.4, .32, .12, dark, -.42, .72, .22, service.body).rotation.z = -.2;
+  service.arms[1].name = "greeting-arm";
+  const serviceMarker = mesh(new THREE.OctahedronGeometry(.14), accent, stations[3].x, 2.25, stations[3].z);
+  obstacles.push({ x: stations[3].x, z: stations[3].z, r: .85 });
+
+  const villagers = [[-4, 1.8], [-3.8, -3.8], [2.8, -3.2], [2.2, 6], [-6.5, 4]].map(([x, z], index) => {
+    const npc = robot(index % 2 ? stone : leaf);
+    npc.root.position.set(x, 0, z);
+    npc.root.scale.setScalar(.78 + index % 3 * .06);
+    // Backpack and cap distinguish wandering residents from the player.
+    box(.4, .4, .2, pale, 0, .72, -.3, npc.body);
+    box(.76, .12, .6, index % 2 ? leaf : stone, 0, 1.56, 0, npc.body);
+    return { ...npc, heading: Math.random() * Math.PI * 2, remaining: .6 + index * .4, resting: false };
+  });
+  const canMove = (x: number, z: number) => Math.hypot(x, z) < walkRadius && !obstacles.some((o) => Math.hypot(x - o.x, z - o.z) < o.r);
   const shadowMaterial = new THREE.MeshBasicMaterial({ color: "#20382b", transparent: true, opacity: .2, depthWrite: false });
   materials.push(shadowMaterial);
   const shadow = mesh(new THREE.CircleGeometry(.5, 24), shadowMaterial, 0, .015, 2.3);
@@ -214,8 +312,11 @@ export function createGameWorld(host: HTMLDivElement, hint: HTMLParagraphElement
       renderer.clearDepth();
       renderer.render(scene, camera);
       host.dataset.weather = `${clouds[0].position.x.toFixed(4)},${rotor.rotation.z.toFixed(4)},${crowns[0].rotation.z.toFixed(4)}`;
+      host.dataset.npcs = JSON.stringify(villagers.map(({ root }) => [Number(root.position.x.toFixed(3)), Number(root.position.z.toFixed(3))]));
+      host.dataset.windmill = `${windmill.position.x},${windmill.position.z}`;
+      host.dataset.portalTime = String(rings[1]?.root.getObjectByName("orbit")?.rotation.z);
       stations.forEach((station, index) => {
-        projected.set(station.x, 3.1, station.z).project(camera);
+        projected.set(station.x, station.labelY, station.z).project(camera);
         const label = labelNodes[index];
         if (label) {
           label.style.left = `${(projected.x * .5 + .5) * 100}%`;
@@ -227,13 +328,13 @@ export function createGameWorld(host: HTMLDivElement, hint: HTMLParagraphElement
   }
   function clearInput() { pressed.clear(); }
   function detectStation() {
-    const next = stations.findIndex((station) => Math.hypot(player.position.x - station.x, player.position.z - station.z) < 1.55);
+    const next = stations.findIndex((station) => Math.hypot(player.position.x - station.x, player.position.z - station.z) < station.reach);
     if (next !== nearby || dirty) {
       nearby = next;
       host.dataset.nearby = String(next);
-      hint.textContent = next < 0 ? "Masuk ke gerbang untuk membuka cerita di baliknya." : `Portal ${navLinks[next].label}. Berjalan masuk atau tekan E.`;
+      hint.textContent = next < 0 ? "Dekati patung, temui NPC kontak, atau jelajahi gerbang." : next === 0 ? "Patung Wildan. Tekan E atau Interaksi untuk membaca tentang saya." : next === 3 ? "NPC Kontak. Tekan E atau Interaksi untuk melihat layanan dan kontak." : `Portal ${navLinks[next].label}. Berjalan masuk atau tekan E.`;
     }
-    const inside = stations.findIndex((station) => Math.abs(player.position.x - station.x) < .65 && Math.abs(player.position.z - station.z) < .5 && player.position.y < .8);
+    const inside = stations.findIndex((station) => station.kind === "portal" && Math.abs(player.position.x - station.x) < .65 && Math.abs(player.position.z - station.z) < .5 && player.position.y < .8);
     if (inside < 0) enteredPortal = -1;
     else if (inside !== enteredPortal && !paused) {
       enteredPortal = inside;
@@ -275,7 +376,6 @@ export function createGameWorld(host: HTMLDivElement, hint: HTMLParagraphElement
       // Match movement to the camera's screen axes; normalize diagonal speed.
       const dx = (right * .91 + forward * .41) / length * dt * 3.2;
       const dz = (-right * .41 + forward * .91) / length * dt * 3.2;
-      const canMove = (x: number, z: number) => Math.hypot(x, z) < walkRadius && !obstacles.some((o) => Math.hypot(x - o.x, z - o.z) < o.r) && !stations.some((o) => [-.96, .96].some((side) => Math.hypot(x - o.x - side, z - o.z) < .35));
       if (canMove(player.position.x + dx, player.position.z)) player.position.x += dx;
       if (canMove(player.position.x, player.position.z + dz)) player.position.z += dz;
       player.rotation.y = Math.atan2(dx, dz);
@@ -293,10 +393,38 @@ export function createGameWorld(host: HTMLDivElement, hint: HTMLParagraphElement
     shadow.position.set(player.position.x, .015, player.position.z);
     shadow.scale.setScalar(1 - Math.min(player.position.y * .2, .35));
     detectStation();
-    rings.forEach(({ ring, beacon }, index) => {
-      ring.scale.set(index === nearby ? 1.06 : 1, index === nearby ? 1.43 : 1.35, 1);
-      if (!reduced.matches) { beacon.rotation.y = elapsed; beacon.position.y = 3 + Math.sin(elapsed * 2 + index) * .12; }
+    rings.forEach((portal) => {
+      if (!portal) return;
+      portal.update(reduced.matches ? 0 : elapsed + portal.index, portal.index === nearby);
     });
+    villagers.forEach((npc, index) => {
+      let walking = false;
+      if (!reduced.matches) {
+        npc.remaining -= dt;
+        if (npc.remaining <= 0) {
+          npc.heading = Math.random() * Math.PI * 2;
+          npc.resting = Math.random() < .3;
+          npc.remaining = 1 + Math.random() * 3;
+        }
+        const x = npc.root.position.x + Math.sin(npc.heading) * dt * .7;
+        const z = npc.root.position.z + Math.cos(npc.heading) * dt * .7;
+        // Ambient wandering only: turn at obstacles instead of needing pathfinding.
+        if (!npc.resting && Math.hypot(x - player.position.x, z - player.position.z) > 1) {
+          if (canMove(x, z) && !villagers.some((other) => other !== npc && Math.hypot(x - other.root.position.x, z - other.root.position.z) < .85)) {
+            npc.root.position.set(x, 0, z);
+            npc.root.rotation.y = npc.heading;
+            walking = true;
+          } else npc.remaining = 0;
+        }
+      }
+      const stride = walking ? Math.sin(elapsed * 7 + index) * .4 : 0;
+      npc.legs[0].rotation.x = npc.arms[1].rotation.x = stride;
+      npc.legs[1].rotation.x = npc.arms[0].rotation.x = -stride;
+    });
+    if (!reduced.matches) {
+      serviceMarker.rotation.y = elapsed;
+      service.root.rotation.y = nearby === 3 ? Math.atan2(player.position.x - service.root.position.x, player.position.z - service.root.position.z) : .2;
+    }
     if (!reduced.matches) floats.forEach((island, index) => { island.position.y = -1.6 + Math.sin(elapsed * .8 + index * 2) * .16; });
     updateCamera(reduced.matches, dt);
     host.dataset.playerX = player.position.x.toFixed(3);
@@ -364,7 +492,106 @@ export function createGameWorld(host: HTMLDivElement, hint: HTMLParagraphElement
   function jump() {
     if (!paused && visible && player.position.y === 0) { velocityY = 4.4; dirty = true; }
   }
+  let closePreview: (() => void) | undefined;
+  function preview(host: HTMLDivElement, index: number) {
+    closePreview?.();
+    const source = index === 0 ? altar : index === 3 ? service.root : rings[index]?.root;
+    if (!source) return;
+    const view = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "low-power" });
+    view.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    view.domElement.setAttribute("aria-hidden", "true");
+    host.appendChild(view.domElement);
+    const model = source.clone(true);
+    model.position.set(0, 0, 0);
+    model.rotation.set(0, -.18, 0);
+    // Share world geometry; animated uniforms belong to the portrait alone.
+    const vortex = model.getObjectByName("vortex") as THREE.Mesh<THREE.CircleGeometry, THREE.ShaderMaterial> | undefined;
+    if (vortex) vortex.material = vortex.material.clone();
+    const updatePortal = vortex ? animatePortal(model) : undefined;
+    const arm = model.getObjectByName("greeting-arm");
+    const stage = new THREE.Scene();
+    stage.add(model);
+    const fill = new THREE.HemisphereLight(0xe4f5ed, 0x354e40, 3);
+    const key = new THREE.DirectionalLight(0xfff7e6, 3);
+    key.position.set(-3, 6, 5);
+    stage.add(fill, key);
+    const lens = new THREE.PerspectiveCamera(34, 1, .1, 40);
+    let time = 0;
+    let previous = 0;
+    let inView = true;
+    let closed = false;
+    function draw() {
+      if (closed) return;
+      const still = reduced.matches;
+      updatePortal?.(still ? 0 : time, true);
+      if (arm) arm.rotation.z = still ? -.45 : -.65 + Math.sin(time * 2.8) * .22;
+      if (index === 3) model.position.y = still ? 0 : Math.sin(time * 2) * .035;
+      view.render(stage, lens);
+      host.dataset.previewTime = (still ? 0 : time).toFixed(3);
+    }
+    function tick(now: number) {
+      time += Math.min((now - (previous || now)) / 1000, .04);
+      previous = now;
+      draw();
+    }
+    function schedulePreview() {
+      if (closed) return;
+      previous = 0;
+      view.setAnimationLoop(!document.hidden && inView && !reduced.matches && index !== 0 ? tick : null);
+      draw();
+    }
+    function resizePreview() {
+      const { width, height } = host.getBoundingClientRect();
+      if (!width || !height) return;
+      view.setSize(width, height, false);
+      lens.aspect = width / height;
+      lens.updateProjectionMatrix();
+      const size = index === 3 ? 2.5 : 4.2;
+      const distance = size / (2 * Math.tan(THREE.MathUtils.degToRad(17))) / Math.min(lens.aspect, 1);
+      const center = index === 3 ? .95 : 1.55;
+      lens.position.set(distance * .25, center + distance * .18, distance);
+      lens.lookAt(0, center, 0);
+      draw();
+    }
+    function themePreview() {
+      const isDark = document.documentElement.classList.contains("dark");
+      fill.intensity = isDark ? 2.5 : 3;
+      key.color.set(isDark ? "#c3ddd8" : "#fff7e6");
+      draw();
+    }
+    function previewLost(event: Event) {
+      event.preventDefault();
+      cleanup();
+      host.dataset.preview = "error";
+    }
+    const observer = new ResizeObserver(resizePreview);
+    observer.observe(host);
+    const visibility = new IntersectionObserver(([entry]) => { inView = entry.isIntersecting; schedulePreview(); });
+    visibility.observe(host);
+    const theme = new MutationObserver(themePreview);
+    theme.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    reduced.addEventListener("change", schedulePreview);
+    document.addEventListener("visibilitychange", schedulePreview);
+    view.domElement.addEventListener("webglcontextlost", previewLost);
+    function cleanup() {
+      if (closed) return;
+      closed = true;
+      view.setAnimationLoop(null);
+      observer.disconnect(); visibility.disconnect(); theme.disconnect();
+      reduced.removeEventListener("change", schedulePreview);
+      document.removeEventListener("visibilitychange", schedulePreview);
+      view.domElement.removeEventListener("webglcontextlost", previewLost);
+      vortex?.material.dispose();
+      view.dispose(); view.forceContextLoss(); view.domElement.remove();
+      if (closePreview === cleanup) closePreview = undefined;
+    }
+    closePreview = cleanup;
+    resizePreview(); themePreview(); schedulePreview();
+    host.dataset.preview = "ready";
+    return cleanup;
+  }
   return {
+    preview,
     setKey(key: string, down: boolean) {
       if (!keys.has(key)) return false;
       dirty = true;
@@ -379,7 +606,7 @@ export function createGameWorld(host: HTMLDivElement, hint: HTMLParagraphElement
     clearInput,
     nearby: () => paused ? -1 : nearby,
     pause(value: boolean) { paused = value; schedule(); },
-    reset() { player.position.set(0, 0, 2.3); player.rotation.y = 0; velocityY = 0; enteredPortal = -1; clearInput(); pointerLeave(); dirty = true; detectStation(); updateCamera(true); render(); },
+    reset() { player.position.set(0, 0, 2.8); player.rotation.y = 0; velocityY = 0; enteredPortal = -1; clearInput(); pointerLeave(); dirty = true; detectStation(); updateCamera(true); render(); },
     leavePortal() {
       const station = stations[enteredPortal];
       if (station) player.position.set(station.x, 0, station.z + 1.3);
@@ -394,7 +621,7 @@ export function createGameWorld(host: HTMLDivElement, hint: HTMLParagraphElement
     visit(index: number) {
       const station = stations[index];
       if (!station) return;
-      player.position.set(station.x, 0, station.z + 1.15);
+      player.position.set(station.x, 0, station.z + station.approach);
       player.rotation.y = Math.PI;
       velocityY = 0;
       clearInput();
@@ -404,6 +631,7 @@ export function createGameWorld(host: HTMLDivElement, hint: HTMLParagraphElement
       render();
     },
     dispose() {
+      closePreview?.();
       disposed = true;
       renderer.setAnimationLoop(null);
       resizeObserver.disconnect(); intersection.disconnect(); themeObserver.disconnect();

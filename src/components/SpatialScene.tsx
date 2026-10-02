@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowsClockwise, Compass, Pause, Play, X } from "@phosphor-icons/react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { navLinks, profile } from "@/data/content";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import type { GameWorld } from "@/components/game-world";
@@ -12,6 +12,31 @@ const directions = [
   { key: "arrowdown", label: "Gerak mundur", icon: ArrowDown },
   { key: "arrowright", label: "Gerak kanan", icon: ArrowRight },
 ];
+
+const portraits = [
+  { name: "Altar Wildan", description: "Cerita di balik pembuat dunia ini.", kind: "altar" },
+  { name: "Gerbang Keahlian", description: "Teknologi yang menjadi bekal setiap proyek.", kind: "portal" },
+  { name: "Gerbang Proyek", description: "Jelajahi karya yang sudah dibangun.", kind: "portal" },
+  { name: "Pemandu Proyek", description: "Ada ide? Mari cari cara mewujudkannya.", kind: "npc" },
+];
+
+function InteractionPortrait({ index, world, ready }: { index: number; world: RefObject<GameWorld | null>; ready: boolean }) {
+  const host = useRef<HTMLDivElement>(null);
+  const portrait = portraits[index];
+  useEffect(() => {
+    if (!host.current || !world.current || !ready) return;
+    const element = host.current;
+    try { return world.current.preview(element, index); }
+    catch { element.dataset.preview = "error"; }
+  }, [index, world, ready]);
+  return <aside className="interaction-portrait" aria-label={`Aset interaksi: ${portrait.name}`} data-asset={portrait.kind}>
+    <div ref={host} className="interaction-portrait-stage" data-preview={ready ? "loading" : "error"}>
+      <p className="portrait-loading">Menyiapkan aset...</p>
+      <p className="portrait-fallback">Pratinjau 3D tidak tersedia.</p>
+    </div>
+    <div className="interaction-portrait-caption"><h3>{portrait.name}</h3><p>{portrait.description}</p></div>
+  </aside>;
+}
 
 export function SpatialScene({ children }: { children: ReactNode[] }) {
   const viewport = useRef<HTMLDivElement>(null);
@@ -113,18 +138,18 @@ export function SpatialScene({ children }: { children: ReactNode[] }) {
         </div>
       </header>
 
-      <div ref={labels} className="world-portal-labels" aria-label="Portal di dunia">
-        {navLinks.map((link, index) => <button type="button" key={link.href} aria-label={`Masuk portal ${link.label}`} onClick={() => { game.current?.visit(index); openPortal(index); }}><span>0{index + 1}</span>{link.label}<span aria-hidden="true">↗</span></button>)}
+      <div ref={labels} className="world-portal-labels" aria-label="Tempat interaksi di dunia">
+        {navLinks.map((link, index) => <button type="button" key={link.href} aria-label={index === 0 ? "Interaksi patung Tentang Saya" : index === 3 ? "Bicara dengan NPC Kontak" : `Masuk portal ${link.label}`} onClick={() => { game.current?.visit(index); openPortal(index); }}><span>{index === 0 ? "ALTAR" : index === 3 ? "NPC" : "PORTAL"}</span>{link.label}<span aria-hidden="true">↗</span></button>)}
       </div>
 
       {status !== "ready" && <div className="world-loading" role="status">
-        {status === "loading" ? <><div className="game-loading-island" /><p>Menyiapkan dunia Wildan...</p></> : <><p>Dunia 3D belum bisa dimuat.<br />Buka konten lewat menu portal di bawah.</p><button type="button" className="button button-quiet" onClick={() => { setStatus("loading"); setPaused(false); setAttempt(attempt + 1); }}>Coba lagi</button></>}
+        {status === "loading" ? <><div className="game-loading-island" /><p>Menyiapkan dunia Wildan...</p></> : <><p>Dunia 3D belum bisa dimuat.<br />Buka konten lewat menu di bawah.</p><button type="button" className="button button-quiet" onClick={() => { setStatus("loading"); setPaused(false); setAttempt(attempt + 1); }}>Coba lagi</button></>}
       </div>}
       {paused && active === null && <div className="game-pause-label">Game dijeda</div>}
 
-      <aside className="world-objective"><Compass size={20} /><div><strong>Empat portal. Satu cerita.</strong><p>Jalankan robot ke dalam gerbang untuk menjelajah.</p></div></aside>
+      <aside className="world-objective"><Compass size={20} /><div><strong>Temui penghuni dunia Wildan.</strong><p>Patung di tengah menyimpan cerita. NPC Kontak siap membantumu memulai proyek.</p></div></aside>
       <div className="world-bottom">
-        <p ref={hint} className="game-hint" role="status">Masuk ke salah satu portal untuk melihat isinya.</p>
+        <p ref={hint} className="game-hint" role="status">Dekati patung, temui NPC kontak, atau jelajahi gerbang.</p>
         <div className="game-control-bar">
           <div className="game-dpad" aria-label="Kontrol gerakan">
             {directions.map(({ key, label, icon: Icon }) => <button type="button" key={key} aria-label={label} disabled={status !== "ready" || paused}
@@ -134,13 +159,13 @@ export function SpatialScene({ children }: { children: ReactNode[] }) {
               onKeyDown={(event) => { if (event.key === " " || event.key === "Enter") { event.preventDefault(); game.current?.setKey(key, true); } }}
               onKeyUp={() => game.current?.setKey(key, false)} onBlur={() => game.current?.setKey(key, false)}><Icon size={18} /></button>)}
           </div>
-          <p id="game-instructions" className="game-instructions">Langsung gunakan keyboard untuk bermain<br /><kbd>WASD / ↑↓←→</kbd> berjalan · <kbd>Space</kbd> lompat<br /><kbd>E</kbd> masuk portal · <kbd>Esc</kbd> jeda</p>
+          <p id="game-instructions" className="game-instructions">Langsung gunakan keyboard untuk bermain<br /><kbd>WASD / ↑↓←→</kbd> berjalan · <kbd>Space</kbd> lompat<br /><kbd>E</kbd> interaksi · <kbd>Esc</kbd> jeda</p>
           <div className="game-action-buttons">
             <button type="button" disabled={status !== "ready" || paused} onClick={() => game.current?.jump()}>Lompat <kbd>Space</kbd></button>
-            <button type="button" disabled={status !== "ready" || paused} onClick={interact}>Masuk <kbd>E</kbd></button>
+            <button type="button" disabled={status !== "ready" || paused} onClick={interact}>Interaksi <kbd>E</kbd></button>
           </div>
         </div>
-        <nav className="world-shortcuts" aria-label="Akses cepat portal">
+        <nav className="world-shortcuts" aria-label="Akses cepat portfolio">
           {navLinks.map((link, index) => <button type="button" key={link.href} onClick={() => { game.current?.visit(index); openPortal(index); }}>{link.label}</button>)}
         </nav>
       </div>
@@ -155,8 +180,11 @@ export function SpatialScene({ children }: { children: ReactNode[] }) {
           else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
         }}
         onClick={(event) => { if (event.target === event.currentTarget) { const rect = event.currentTarget.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.current?.close(); } }}>
-        <div className="portal-modal-header"><div><span className="mono-label">Portal portfolio</span><h2 id="portal-title">{active === null ? "Portfolio" : navLinks[active].label}</h2></div><button type="button" className="icon-button" aria-label="Tutup modal dan kembali bermain" onClick={() => dialog.current?.close()} autoFocus><X size={22} /></button></div>
-        <div className="portal-modal-content">{active !== null && children[active]}</div>
+        <div className="portal-modal-header"><div><span className="mono-label">{active === 0 ? "Altar Wildan" : active === 3 ? "NPC pemandu proyek" : "Portal portfolio"}</span><h2 id="portal-title">{active === null ? "Portfolio" : navLinks[active].label}</h2></div><button type="button" className="icon-button" aria-label="Tutup modal dan kembali bermain" onClick={() => dialog.current?.close()} autoFocus><X size={22} /></button></div>
+        <div className="portal-modal-body">
+          <div className="portal-modal-content" key={`content-${active}`}>{active !== null && children[active]}</div>
+          {active !== null && <InteractionPortrait key={active} index={active} world={game} ready={status === "ready"} />}
+        </div>
         <div className="portal-modal-footer"><span>Game dijeda selama kamu menjelajah.</span><button type="button" className="text-link" onClick={() => dialog.current?.close()}>Kembali bermain <kbd>Esc</kbd></button></div>
       </dialog>
     </div>

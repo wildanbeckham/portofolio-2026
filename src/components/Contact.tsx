@@ -19,7 +19,14 @@ export function Contact() {
   return (
     <section id="contact" className="section contact-section">
       <div className="page-container">
-        <Reveal><h2 className="section-heading">Ide bagus layak<br />jadi <span className="text-accent">karya nyata.</span></h2><p className="section-description">Punya proyek atau ingin berkolaborasi? Ceritakan idemu, kita mulai dari percakapan.</p></Reveal>
+        <Reveal><h2 className="section-heading">Halo, perlu bantuan<br /><span className="text-accent">untuk proyekmu?</span></h2><p className="section-description">Aku pemandu proyek di sini. Ini yang bisa Wildan bantu. Pilih kebutuhanmu, lalu hubungi langsung lewat kontak di bawah.</p></Reveal>
+        <Reveal>
+          <ul className="npc-services" aria-label="Layanan Wildan">
+            <li><h3>Website & landing page</h3><p>Website personal, company profile, dan halaman promosi yang responsif.</p></li>
+            <li><h3>Antarmuka aplikasi</h3><p>Frontend dengan React, Next.js, atau Svelte, dari desain menjadi aplikasi.</p></li>
+            <li><h3>Penyempurnaan website</h3><p>Perbaikan tampilan, responsivitas, dan pengujian fitur website.</p></li>
+          </ul>
+        </Reveal>
         <div className="contact-grid">
           <Reveal className="contact-details">
             <a href={`mailto:${profile.email}`}><EnvelopeSimple size={23} /><div><span>Email</span><p>{profile.email}</p></div></a>
